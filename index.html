@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>勤怠アプリ</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 20px; background-color: #f2f2f7; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        button { font-size: 24px; font-weight: bold; padding: 20px 40px; margin: 10px; border-radius: 30px; border: none; width: 80%; touch-action: manipulation; }
+        #inBtn { background-color: #34c759; color: white; }
+        #outBtn { background-color: #ff3b30; color: white; }
+        button:disabled { background-color: #d1d1d6; }
+        .money { font-size: 32px; font-weight: bold; color: #007aff; margin: 10px 0; }
+        .time-detail { font-size: 18px; color: #3a3a3c; margin-bottom: 5px; }
+        input { font-size: 18px; padding: 5px; width: 80px; text-align: right; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h3>基本設定</h3>
+        時給: <input type="number" id="wage" value="1200"> 円
+    </div>
+
+    <div class="card">
+        <h3>打刻</h3>
+        <button id="inBtn" onclick="clockIn()">出勤</button>
+        <button id="outBtn" onclick="clockOut()" disabled>退勤</button>
+        <p id="status" style="color: #8e8e93; margin-top: 15px;">待機中</p>
+    </div>
+
+    <div class="card">
+        <h3>本日の勤務実績</h3>
+        <div class="time-detail">勤務時間: <span id="workedTime">0時間 0分</span></div>
+        <div class="money"><span id="dailyEarnings">0</span> 円</div>
+    </div>
+
+    <script>
+        let startTime = localStorage.getItem('startTime');
+        
+        if (startTime) {
+            let date = new Date(parseInt(startTime));
+            document.getElementById('status').innerText = `勤務中 (出勤: ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')})`;
+            document.getElementById('inBtn').disabled = true;
+            document.getElementById('outBtn').disabled = false;
+        }
+
+        function clockIn() {
+            startTime = Date.now();
+            localStorage.setItem('startTime', startTime);
+            
+            let date = new Date(startTime);
+            document.getElementById('status').innerText = `勤務中 (出勤: ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')})`;
+            document.getElementById('inBtn').disabled = true;
+            document.getElementById('outBtn').disabled = false;
+        }
+
+        function clockOut() {
+            if (!startTime) return;
+            
+            let endTime = Date.now();
+            let diffMs = endTime - parseInt(startTime);
+            
+            // 1分単位（ミリ秒 -> 分）に換算（1分未満切り捨て）
+            let workedMinutes = Math.floor(diffMs / (1000 * 60));
+            let hours = Math.floor(workedMinutes / 60);
+            let mins = workedMinutes % 60;
+
+            // 1分あたりの給与計算
+            let wage = parseInt(document.getElementById('wage').value);
+            let minuteRate = wage / 60;
+            let earned = Math.floor(workedMinutes * minuteRate); // 1円未満切り捨て
+
+            // 画面更新
+            document.getElementById('workedTime').innerText = `${hours}時間 ${mins}分`;
+            document.getElementById('dailyEarnings').innerText = earned.toLocaleString();
+            document.getElementById('status').innerText = "退勤完了（お疲れ様でした）";
+
+            // 状態クリア
+            localStorage.removeItem('startTime');
+            document.getElementById('inBtn').disabled = false;
+            document.getElementById('outBtn').disabled = true;
+        }
+    </script>
+</body>
+</html>
