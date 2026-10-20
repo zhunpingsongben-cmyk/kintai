@@ -5,81 +5,201 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>勤怠アプリ</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 20px; background-color: #f2f2f7; }
-        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        button { font-size: 24px; font-weight: bold; padding: 20px 40px; margin: 10px; border-radius: 30px; border: none; width: 80%; touch-action: manipulation; }
+        body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; text-align: center; padding: 20px; background-color: #f2f2f7; color: #1c1c1e; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; text-align: left; }
+        h3 { margin-top: 0; font-size: 18px; color: #1c1c1e; text-align: center; }
+        button { font-size: 20px; font-weight: bold; padding: 15px 30px; margin: 10px 0; border-radius: 25px; border: none; width: 100%; touch-action: manipulation; cursor: pointer; }
         #inBtn { background-color: #34c759; color: white; }
         #outBtn { background-color: #ff3b30; color: white; }
-        button:disabled { background-color: #d1d1d6; }
-        .money { font-size: 32px; font-weight: bold; color: #007aff; margin: 10px 0; }
-        .time-detail { font-size: 18px; color: #3a3a3c; margin-bottom: 5px; }
+        button:disabled { background-color: #d1d1d6; color: #8e8e93; }
+        .money { font-size: 30px; font-weight: bold; color: #007aff; text-align: center; margin: 10px 0; }
+        .time-detail { font-size: 16px; color: #3a3a3c; text-align: center; margin-bottom: 5px; }
         input { font-size: 18px; padding: 5px; width: 80px; text-align: right; }
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        
+        /* 履歴テーブルのスタイル */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { padding: 8px 4px; text-align: center; border-bottom: 1px solid #e5e5ea; }
+        th { background-color: #f2f2f7; color: #6c6c70; font-weight: 600; }
+        .delete-btn { background: #ff3b30; color: white; border: none; border-radius: 5px; padding: 4px 8px; font-size: 12px; cursor: pointer; width: auto; margin: 0; }
     </style>
 </head>
 <body>
     <div class="card">
-        <h3>基本設定</h3>
-        時給: <input type="number" id="wage" value="1200"> 円
+        <div class="flex-between">
+            <span style="font-weight: bold;">時給設定</span>
+            <div><input type="number" id="wage" value="1300" onchange="saveWage()"> 円</div>
+        </div>
     </div>
 
     <div class="card">
         <h3>打刻</h3>
         <button id="inBtn" onclick="clockIn()">出勤</button>
         <button id="outBtn" onclick="clockOut()" disabled>退勤</button>
-        <p id="status" style="color: #8e8e93; margin-top: 15px;">待機中</p>
+        <p id="status" style="color: #8e8e93; margin-top: 10px; text-align: center; font-size: 14px;">待機中</p>
     </div>
 
     <div class="card">
-        <h3>本日の勤務実績</h3>
+        <h3>直近の勤務実績</h3>
         <div class="time-detail">勤務時間: <span id="workedTime">0時間 0分</span></div>
         <div class="money"><span id="dailyEarnings">0</span> 円</div>
     </div>
 
+    <div class="card">
+        <h3>勤務履歴（ログ）</h3>
+        <div style="text-align: right; margin-bottom: 10px;">
+            <span style="font-weight: bold; font-size: 15px;">累計合計: <span id="monthlyTotal" style="color:#007aff;">0</span> 円</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>日付</th>
+                    <th>出勤</th>
+                    <th>退勤</th>
+                    <th>給与</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="historyTable">
+                <!-- 履歴がここに追加されます -->
+            </tbody>
+        </table>
+    </div>
+
     <script>
-        let startTime = localStorage.getItem('startTime');
+        // 時給の保存・復元
+        let savedWage = localStorage.getItem('wage') || "1200";
+        document.getElementById('wage').value = savedWage;
+
+        function saveWage() {
+            localStorage.setItem('wage', document.getElementById('wage').value);
+        }
+
+        // 状態の復元
+        let rawStartTime = localStorage.getItem('rawStartTime');
+        let roundedStartTime = localStorage.getItem('roundedStartTime');
         
-        if (startTime) {
-            let date = new Date(parseInt(startTime));
-            document.getElementById('status').innerText = `勤務中 (出勤: ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')})`;
+        if (rawStartTime && roundedStartTime) {
+            let roundedDate = new Date(parseInt(roundedStartTime));
+            document.getElementById('status').innerText = `勤務中 (出勤換算: ${formatTime(roundedDate)})`;
             document.getElementById('inBtn').disabled = true;
             document.getElementById('outBtn').disabled = false;
         }
 
+        renderHistory();
+
+        // 出勤時刻を30分単位に切り上げる関数
+        function ceil30Minutes(date) {
+            let result = new Date(date);
+            let minutes = result.getMinutes();
+            if (minutes > 0 && minutes <= 30) {
+                result.setMinutes(30, 0, 0);
+            } else if (minutes > 30) {
+                result.setHours(result.getHours() + 1, 0, 0, 0);
+            } else {
+                result.setSeconds(0, 0);
+            }
+            return result;
+        }
+
+        function formatTime(date) {
+            return `${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+        }
+
+        function formatDate(date) {
+            return `${date.getMonth() + 1}/${date.getDate()}`;
+        }
+
         function clockIn() {
-            startTime = Date.now();
-            localStorage.setItem('startTime', startTime);
+            let now = new Date();
+            let rounded = ceil30Minutes(now);
             
-            let date = new Date(startTime);
-            document.getElementById('status').innerText = `勤務中 (出勤: ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')})`;
+            localStorage.setItem('rawStartTime', now.getTime());
+            localStorage.setItem('roundedStartTime', rounded.getTime());
+            
+            document.getElementById('status').innerText = `勤務中 (出勤換算: ${formatTime(rounded)})`;
             document.getElementById('inBtn').disabled = true;
             document.getElementById('outBtn').disabled = false;
         }
 
         function clockOut() {
-            if (!startTime) return;
+            let roundedStart = localStorage.getItem('roundedStartTime');
+            if (!roundedStart) return;
             
-            let endTime = Date.now();
-            let diffMs = endTime - parseInt(startTime);
+            let startDate = new Date(parseInt(roundedStart));
+            let endDate = new Date(); // 退勤は1分単位（そのまま）
             
-            // 1分単位（ミリ秒 -> 分）に換算（1分未満切り捨て）
+            let diffMs = endDate.getTime() - startDate.getTime();
+            if (diffMs < 0) diffMs = 0; // 出勤換算時刻前の退勤に対するセーフティ
+            
             let workedMinutes = Math.floor(diffMs / (1000 * 60));
             let hours = Math.floor(workedMinutes / 60);
             let mins = workedMinutes % 60;
 
-            // 1分あたりの給与計算
             let wage = parseInt(document.getElementById('wage').value);
             let minuteRate = wage / 60;
-            let earned = Math.floor(workedMinutes * minuteRate); // 1円未満切り捨て
+            let earned = Math.floor(workedMinutes * minuteRate);
 
-            // 画面更新
+            // 表示の更新
             document.getElementById('workedTime').innerText = `${hours}時間 ${mins}分`;
             document.getElementById('dailyEarnings').innerText = earned.toLocaleString();
-            document.getElementById('status').innerText = "退勤完了（お疲れ様でした）";
+            document.getElementById('status').innerText = "退勤完了";
 
-            // 状態クリア
-            localStorage.removeItem('startTime');
+            // ログの保存
+            saveLog({
+                id: Date.now(),
+                date: formatDate(startDate),
+                inTime: formatTime(startDate),
+                outTime: formatTime(endDate),
+                earned: earned
+            });
+
+            // リセット
+            localStorage.removeItem('rawStartTime');
+            localStorage.removeItem('roundedStartTime');
             document.getElementById('inBtn').disabled = false;
             document.getElementById('outBtn').disabled = true;
+        }
+
+        function saveLog(logItem) {
+            let history = JSON.parse(localStorage.getItem('kintaiHistory') || '[]');
+            history.unshift(logItem);
+            localStorage.setItem('kintaiHistory', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function deleteLog(id) {
+            let history = JSON.parse(localStorage.getItem('kintaiHistory') || '[]');
+            history = history.filter(item => item.id !== id);
+            localStorage.setItem('kintaiHistory', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            let history = JSON.parse(localStorage.getItem('kintaiHistory') || '[]');
+            let tbody = document.getElementById('historyTable');
+            tbody.innerHTML = '';
+
+            let monthlyTotal = 0;
+
+            if (history.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="color:#8e8e93;">履歴はありません</td></tr>';
+            } else {
+                history.forEach(item => {
+                    monthlyTotal += item.earned;
+                    let tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${item.date}</td>
+                        <td>${item.inTime}</td>
+                        <td>${item.outTime}</td>
+                        <td>${item.earned.toLocaleString()}円</td>
+                        <td><button class="delete-btn" onclick="deleteLog(${item.id})">削除</button></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            document.getElementById('monthlyTotal').innerText = monthlyTotal.toLocaleString();
         }
     </script>
 </body>
